@@ -51,7 +51,6 @@ enum Token {
     Literal(String),
     String(String),
     Quote,
-    Period,
     Whitespace
 }
 
@@ -63,7 +62,6 @@ impl fmt::Display for Token {
             Token::Literal(ref s) => write!(f, "{}", s),
             Token::String(ref s) => write!(f, "\"{}\"", s),
             Token::Quote => write!(f, "'"),
-            Token::Period => write!(f, "."),
             Token::Whitespace => write!(f, " "),
         }
     }
@@ -135,7 +133,6 @@ fn tokenize(code: &str) -> Result<VecDeque<Token>, SyntaxError> {
                     tokens.push_back(Token::RightParenthesis)
                 },
                 '\'' => tokens.push_back(Token::Quote),
-                '.' => tokens.push_back(Token::Period),
                 '"' => {
                     in_text = true;
                     text_buffer = String::new();
@@ -277,11 +274,13 @@ fn parse_list(tokens: &mut VecDeque<Token>) -> Result<Cons, SyntaxError> {
     let mut is_dotted_pair = false;
     if let Some(cdr_token) = tokens.front() {
         match cdr_token {
-            Token::Period => {
-                // => (car . ?...
-                // 1つ読み捨ててさらに次のトークンを読んでcdrにする必要がある。
-                // ただし、ここではmutableな借用ができないので、一旦スコープを抜ける。
-                is_dotted_pair = true;
+            Token::Literal(s) => {
+                if s == "." {
+                    // => (car . ?...
+                    // 1つ読み捨ててさらに次のトークンを読んでcdrにする必要がある。
+                    // ただし、ここではmutableな借用ができないので、一旦スコープを抜ける。
+                    is_dotted_pair = true;
+                }
             },
             _ => (),
         }
@@ -333,11 +332,21 @@ fn parse_list(tokens: &mut VecDeque<Token>) -> Result<Cons, SyntaxError> {
 }
 
 fn parse_literal(literal: &str) -> Result<Atom, SyntaxError> {
+    if literal == "nil" {
+        return Ok(Atom::Nil)
+    }
+
     let mut has_point = false;
     for chr in literal.chars() {
         match chr {
-            '.' => has_point = true,
-            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => (),
+            '.' => {
+                if has_point {
+                    // double point is invalid
+                    return Ok(Atom::Symbol(literal.to_owned()))
+                }
+                has_point = true
+            },
+            '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '-' | '+' => (),
             _ => return Ok(Atom::Symbol(literal.to_owned()))
         }
     }
