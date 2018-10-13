@@ -18,7 +18,21 @@ fn main() {
 
                 println!("Input: {}", line);
 
-                let expr = match parse(&line) {
+                let mut tokens = match tokenize(&line) {
+                    Ok(tokens) => tokens,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        continue;
+                    }
+                };
+
+                println!("Tokenizer Result:");
+                for token in &tokens {
+                    println!("{}", token);
+                }
+                println!("----");
+
+                let expr = match parse(&mut tokens) {
                     Ok(expr) => expr,
                     Err(e) => {
                         eprintln!("{}", e);
@@ -26,7 +40,9 @@ fn main() {
                     }
                 };
 
+                println!("Parser Result:");
                 println!("{:?}", expr);
+                println!("----");
             },
             Err(ReadlineError::Interrupted) => {
                 println!("C-c");
@@ -201,30 +217,14 @@ enum Expression {
 
 const NIL_EXPRESSION: Expression = Expression::Atom(Atom::Nil);
 
-fn parse(code: &str) -> Result<Expression, SyntaxError> {
-    let mut tokens = tokenize(code)?;
-
-    println!("Tokenizer Result:");
-
-    for token in &tokens {
-        println!("{}", token);
-    }
-
-    println!("----");
-
-    // ----
-
-    parse_recursive(&mut tokens)
-}
-
-fn parse_recursive(tokens: &mut VecDeque<Token>) -> Result<Expression, SyntaxError> {
+fn parse(tokens: &mut VecDeque<Token>) -> Result<Expression, SyntaxError> {
     while let Some(token) = tokens.pop_front() {
         return match token {
             Token::LeftParenthesis => Ok(Expression::Cons(parse_list(tokens)?)),
             Token::RightParenthesis => Err(SyntaxError::UnexpectedToken(token)),
             Token::Quote => Ok(Expression::Cons(Cons {
                 car: Box::new(Expression::Atom(Atom::Symbol("quote".to_owned()))),
-                cdr: Box::new(parse_recursive(tokens)?)
+                cdr: Box::new(parse(tokens)?)
             })),
             Token::Literal(s) => Ok(Expression::Atom(parse_literal(&s)?)),
             Token::String(s) => Ok(Expression::Atom(Atom::String(s))),
@@ -265,7 +265,7 @@ fn parse_list(tokens: &mut VecDeque<Token>) -> Result<Cons, SyntaxError> {
 
     // => (car_token ?...
     //      `-- Parse
-    let car = parse_recursive(tokens)?;
+    let car = parse(tokens)?;
     // println!("(Debug) Parse car: {:?}", car);
 
     // => (car ?...
@@ -295,7 +295,7 @@ fn parse_list(tokens: &mut VecDeque<Token>) -> Result<Cons, SyntaxError> {
 
         // => (car . ?...
         //            `-- Parse
-        let cdr = parse_recursive(tokens)?;
+        let cdr = parse(tokens)?;
 
         // => (car . cdr ?
         //                `-- Check
